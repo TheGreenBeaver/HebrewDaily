@@ -1,0 +1,1 @@
+export const isDefined = <T>(v?: T | null): v is T => v != null;
