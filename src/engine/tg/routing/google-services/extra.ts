@@ -12,7 +12,7 @@ export const extraMiddleware = new Composer<GoogleServicesContext>(
     const { resources: { authClient }, session: { commandName } } = ctx;
 
     if (!authClient.credentials.access_token && commandName !== Commands.googleAuth) {
-      handleGoogleAuth(ctx, true);
+      await handleGoogleAuth(ctx, true);
     } else {
       await next();
     }

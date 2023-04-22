@@ -1,6 +1,7 @@
 import type { NextFunction } from 'grammy';
 import { Bot, session as sessionMiddleware } from 'grammy';
 import mapValues from 'lodash/mapValues';
+import now from 'lodash/now';
 
 import { getVar } from '../../utils/env';
 import type { AppResources } from '../types';
@@ -65,11 +66,30 @@ export const createBot = (resources: AppResources): Bot<CombinedContext> => {
         logger.info('No module is in control');
         session.moduleInControl = undefined;
       };
-      // === === ===
 
+      // === === ===
       session.commandName = ctx.entities().find(entity => entity.type === 'bot_command')?.text.substring(1);
 
       await next();
+    },
+
+    async ({ session: { commandName, moduleInControl } }, next) => {
+      const startTime = now();
+      await next();
+      const endTime = now();
+      const processingTime = (endTime - startTime) / 1000;
+
+      const message =
+        `Time spent: ${processingTime.toFixed(3)}s. ` +
+        `Details: commandName = ${commandName}, moduleInControl = ${moduleInControl}`;
+
+      if (processingTime > 8) {
+        logger.error(message);
+      } else if (processingTime > 5) {
+        logger.warn(message);
+      } else {
+        logger.debug(message);
+      }
     },
   );
 
@@ -101,7 +121,7 @@ export const createBot = (resources: AppResources): Bot<CombinedContext> => {
   bot.catch(error => {
     logger.error(error.message);
 
-    error.ctx.reply('Упс! Что-то пошло не так...');
+    return error.ctx.reply('Упс! Что-то пошло не так...');
   });
 
   return bot;

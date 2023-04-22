@@ -8,11 +8,11 @@ export const composer = new Composer<EnhancedContext>();
 composer.command('translate', async ctx => {
   const text = ctx.match;
 
-  const wordData = (await translator.getWordsData(text))[text];
+  translator.push([text], async wordsData => {
+    const wordData = wordsData[text];
 
-  if (!wordData?.length) {
-    return;
-  }
+    return wordData?.length && ctx.reply(formatTranslation(wordData), { parse_mode: 'HTML' });
+  });
 
-  ctx.reply(formatTranslation(wordData), { parse_mode: 'HTML' });
+  return ctx.replyWithChatAction('typing');
 });

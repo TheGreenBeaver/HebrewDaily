@@ -28,6 +28,23 @@
         "null": "ignore"
       }
     ],
+    "@typescript-eslint/no-empty-function": [
+      "error",
+      {
+        "allow": [
+          "methods"
+        ]
+      }
+    ],
+    "@typescript-eslint/space-before-function-paren": [
+      "error",
+      {
+        "anonymous": "always",
+        "named": "never",
+        "asyncArrow": "always"
+      }
+    ],
+    "@typescript-eslint/no-floating-promises": "error",
     "simple-import-sort/imports": "error",
     "simple-import-sort/exports": "error",
     "@typescript-eslint/type-annotation-spacing": "error",

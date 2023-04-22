@@ -1,6 +1,11 @@
+import { InputFile } from 'grammy';
+import noop from 'lodash/noop';
+import type { Content } from 'pdfmake/interfaces';
+
 import { withComplicatedCache } from '../../../../../utils/cache';
 import { listAll } from '../../../../../utils/google-services';
 import { decodeHtml } from '../../../../../utils/misc';
+import { PdfClassNames, writePdf } from '../../../../../utils/pdf';
 import type { WordsData } from '../../../../../word-processing';
 import { translator } from '../../../../../word-processing';
 import type { Classroom, Drive } from '../../../../types';
@@ -29,12 +34,12 @@ const extractWords = (fileContent: string): string[] => {
     return [];
   }
 
-  const decodedText = decodeHtml(tableBody);
+  const decodedTableBody = decodeHtml(tableBody);
+  const tableCells = extractTagContent(decodedTableBody, 'td');
 
-  return extractTagContent(decodedText, 'span')
-    .map(fragment => fragment.replace(/\s/g, '').split('/'))
-    .flat()
-    .filter(Boolean);
+  return tableCells.map(cell =>
+    extractTagContent(cell, 'span').join('').split(/[/+,.]/).map(word => word.trim()),
+  ).flat().filter(Boolean);
 };
 
 type Materials = { words: string[], wordsData: WordsData };
@@ -46,7 +51,7 @@ const getFileMaterials = withComplicatedCache<Promise<Materials>, [string, Drive
     const { data } = await drive.files.export({ fileId, mimeType: 'text/html' });
 
     const words = extractWords(`${data}`);
-    const wordsData = await translator.getWordsData(...words);
+    const wordsData = await translator.push(words);
 
     return { words, wordsData };
   } catch (e) {
@@ -99,37 +104,65 @@ export const handleListWords = async (ctx: GoogleServicesContext): Promise<boole
     return false;
   }
 
-  ctx.reply('Ваш запрос обрабатывается, это может занять некоторое время');
+  await ctx.reply('Ваш запрос обрабатывается, это может занять некоторое время');
 
-  const { words, wordsData } = await getCourseMaterials(courseId, wordsSourcePattern, classroom, drive);
+  getCourseMaterials(courseId, wordsSourcePattern, classroom, drive).then(async ({ words, wordsData }) => {
+    let answerLength = 0;
+    let wordsLeft = words.length;
+    const shortAnswer: string[] = [];
+    const pdfDocContent: Content[] = [];
 
-  let answerLength = 0;
-  let wordsLeft = words.length;
-  const shortAnswer: string[] = [];
+    for (const word of words) {
+      const singleWordData = wordsData[word];
+      const noAutoTranslationFraze = 'Не удалось перевести автоматически';
 
-  for (const word of words) {
-    const singleWordData = wordsData[word];
-    const translation = singleWordData?.[0]?.translation ?? '<i>Не удалось перевести автоматически</i>';
+      pdfDocContent.push({ text: word, style: PdfClassNames.Word });
 
-    const line = `<b>${word}</b>\n${translation}`;
-    answerLength += line.length;
-    wordsLeft--;
+      if (!singleWordData?.length) {
+        pdfDocContent.push({ text: noAutoTranslationFraze, style: [PdfClassNames.Italics, PdfClassNames.Last] });
+      } else {
+        pdfDocContent.push(...singleWordData.map(({ context, transLit, translation, comment }) => {
+          const lines: Content[] = [
+            { text: context, style: PdfClassNames.Context },
+            { text: transLit, style: PdfClassNames.Italics },
+            { text: translation, style: PdfClassNames.Last },
+          ];
 
-    if (answerLength > TEXT_MAX_LENGTH) {
-      if (answerLength - line.length + 17 + `${wordsLeft}`.length > TEXT_MAX_LENGTH) {
-        shortAnswer.pop();
-        wordsLeft++;
+          if (comment) {
+            lines.splice(2, 0, { text: comment, style: PdfClassNames.Italics });
+          }
+
+          return lines;
+        }).flat());
       }
 
-      shortAnswer.push(`...и ещё ${wordsLeft} слов.`);
+      const translation = singleWordData?.[0]?.translation ?? `<i>${noAutoTranslationFraze}</i>`;
 
-      break;
-    } else {
-      shortAnswer.push(line);
+      const line = `<b>${word}</b>\n${translation}`;
+      answerLength += line.length;
+      wordsLeft--;
+
+      if (answerLength > TEXT_MAX_LENGTH) {
+        if (answerLength - line.length + 17 + `${wordsLeft}`.length > TEXT_MAX_LENGTH) {
+          shortAnswer.pop();
+          wordsLeft++;
+        }
+
+        shortAnswer.push(`...и ещё ${wordsLeft} слов.`);
+
+        break;
+      } else {
+        shortAnswer.push(line);
+      }
     }
-  }
 
-  ctx.reply(shortAnswer.join('\n\n'), { parse_mode: 'HTML' });
+    const p = 'testdoc.pdf';
+    /*const pdf = */await writePdf({ content: pdfDocContent }, p);
+    await ctx.replyWithDocument(new InputFile(p, `C#${courseId}-${wordsSourcePattern}.pdf`), {
+      caption: 'В этом файле собрана полная информация об изученных словах.',
+    });
+    await ctx.reply(shortAnswer.join('\n\n'), { parse_mode: 'HTML' });
+  }).catch(noop);
 
   return true;
 };

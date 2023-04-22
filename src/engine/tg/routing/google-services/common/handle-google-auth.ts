@@ -20,7 +20,7 @@ export const handleGoogleAuth = (ctx: GoogleServicesContext, emergency?: boolean
     ? 'Мне понадобится доступ к Вашему Google Classroom, чтобы обработать эту команду. '
     : '';
 
-  ctx.reply(
+  return ctx.reply(
     `${introduction}Пожалуйста, перейдите по <a href="${url}">этой ссылке</a>, чтобы авторизоваться в Google.`,
     { parse_mode: 'HTML' },
   );

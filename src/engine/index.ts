@@ -22,7 +22,7 @@ export const start = () => {
     app.use(webhookCallback(bot));
     launchServer();
   } else {
-    bot.start({
+    void bot.start({
       onStart: launchServer,
     });
   }

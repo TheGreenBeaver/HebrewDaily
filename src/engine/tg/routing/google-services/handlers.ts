@@ -18,19 +18,17 @@ composer.command(Commands.listWords, async ctx => {
     return;
   }
 
-  getControl();
   const allCourses = await listAll(params => classroom.courses.list(params), 'courses');
 
   if (!allCourses.length) {
-    ctx.reply('У Вас нет доступных активных курсов');
-
-    return;
+    return ctx.reply('У Вас нет доступных активных курсов');
   }
 
   session.availableCourses = allCourses;
   const coursesList = allCourses.map((course, idx) => `  ${idx + 1}. ${course.name}`).join('\n');
 
-  ctx.reply(
+  getControl();
+  return ctx.reply(
     `Пожалуйста, выберите нужный курс (введите название или номер). Доступные курсы:\n${coursesList}`,
   );
 });
