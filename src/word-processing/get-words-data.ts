@@ -46,10 +46,9 @@ class TranslatorQueue extends Queue<string[], Promise<WordsData>, Worker, number
   }
 
   protected override async spawnWorker(): Promise<Worker> {
-    console.log('spawning new worker');
     if (!this.browser) {
       if (!this.launchBrowser) {
-        this.launchBrowser = puppeteer.launch();
+        this.launchBrowser = puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
       }
 
       this.browser = await this.launchBrowser;
@@ -64,7 +63,6 @@ class TranslatorQueue extends Queue<string[], Promise<WordsData>, Worker, number
 
         return { page };
       } catch (e) {
-        console.log('error while spawning', e);
         if (--retriesLeft === 0) {
           await page.close();
           throw e;
@@ -82,7 +80,6 @@ class TranslatorQueue extends Queue<string[], Promise<WordsData>, Worker, number
   protected performWork = withComplicatedCache<Promise<WordsData>, [Worker, ...string[]], SingleWordData>(async (
     cacheStore, worker, ...allWords
   ) => {
-    console.log('performing work on ', allWords);
     const wordsData: WordsData = {};
     const { page } = worker;
 
