@@ -1,47 +1,73 @@
 import fs from 'fs';
-import merge from 'lodash/merge';
+import isArray from 'lodash/isArray';
 import path from 'path';
 import PdfPrinter from 'pdfmake';
 import type { TDocumentDefinitions, TFontDictionary } from 'pdfmake/interfaces';
 import { Transform } from 'stream';
 
 import { ROOT } from './rom-access';
+import type { OneOrMany } from './types';
 
-export enum PdfClassNames {
+export enum PdfClassName {
   Word = 'word',
   Context = 'context',
   Italics = 'italics',
   Last = 'last',
 }
 
-const defaultDef: Pick<TDocumentDefinitions, 'defaultStyle' | 'styles'> = {
+const docStyles: Pick<TDocumentDefinitions, 'defaultStyle' | 'styles'> = {
   defaultStyle: {
     font: 'Roboto',
     fontSize: 14,
   },
   styles: {
-    [PdfClassNames.Word]: {
+    [PdfClassName.Word]: {
       fontSize: 18,
       bold: true,
       font: 'Heebo',
+      alignment: 'right',
     },
-    [PdfClassNames.Context]: {
+    [PdfClassName.Context]: {
       fontSize: 16,
       font: 'Heebo',
+      alignment: 'right',
     },
-    [PdfClassNames.Italics]: {
+    [PdfClassName.Italics]: {
       italics: true,
     },
-    [PdfClassNames.Last]: {
+    [PdfClassName.Last]: {
       margin: [0, 0, 0, 24],
     },
   },
 };
 
-export function writePdf(docDefinition: TDocumentDefinitions, dest: string): Promise<void>;
-export function writePdf(docDefinition: TDocumentDefinitions): Promise<Buffer>;
+export type TextEntries = {
+  text: string,
+  className: OneOrMany<PdfClassName>,
+}[];
 
-export function writePdf(docDefinition: TDocumentDefinitions, dest?: string) {
+const isSingleCnHebrew = (cn: PdfClassName): boolean => [PdfClassName.Word, PdfClassName.Context].includes(cn);
+
+const isCnHebrew = (cn: OneOrMany<PdfClassName>): boolean => isArray(cn)
+  ? cn.some(isSingleCnHebrew)
+  : isSingleCnHebrew(cn);
+
+const toRtl = (text: string): string => {
+  const withFixedSymbols = text.replace(/[)\][(]/g, symbol => ({
+    ')': '(',
+    '(': ')',
+    '[': ']',
+    ']': '[',
+  }[symbol] ?? symbol));
+  const separateWords = withFixedSymbols.split(' ').map(word => /^\w+$/.test(word) ? ` ${word}` : word);
+
+  return ` ${separateWords.reverse().join(' ')} `;
+};
+
+export function writePdf(textEntries: TextEntries, dest: string): Promise<void>;
+export function writePdf(textEntries: TextEntries): Promise<Buffer>;
+
+export function writePdf(textEntries: TextEntries, dest?: string) {
   const fontsRoot = path.join(ROOT, 'fonts');
 
   const getFontSrc = (name: string): string => path.join(fontsRoot, `${name}.ttf`);
@@ -60,7 +86,16 @@ export function writePdf(docDefinition: TDocumentDefinitions, dest?: string) {
 
   const printer = new PdfPrinter(fonts);
 
-  const pdfDoc = printer.createPdfKitDocument(merge({}, defaultDef, docDefinition));
+  const docDefinition: TDocumentDefinitions = {
+    ...docStyles,
+    content: textEntries.map(entry => {
+      const text = isCnHebrew(entry.className) ? toRtl(entry.text) : entry.text;
+
+      return { text, style: entry.className };
+    }),
+  };
+
+  const pdfDoc = printer.createPdfKitDocument(docDefinition);
 
   if (!dest) {
     return new Promise<Buffer>(resolve => {

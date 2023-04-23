@@ -1,11 +1,11 @@
 import { InputFile } from 'grammy';
 import noop from 'lodash/noop';
-import type { Content } from 'pdfmake/interfaces';
 
 import { withComplicatedCache } from '../../../../../utils/cache';
 import { listAll } from '../../../../../utils/google-services';
 import { decodeHtml } from '../../../../../utils/misc';
-import { PdfClassNames, writePdf } from '../../../../../utils/pdf';
+import type { TextEntries } from '../../../../../utils/pdf';
+import { PdfClassName, writePdf } from '../../../../../utils/pdf';
 import type { WordsData } from '../../../../../word-processing';
 import { translator } from '../../../../../word-processing';
 import type { Classroom, Drive } from '../../../../types';
@@ -109,7 +109,7 @@ export const handleListWords = async (ctx: GoogleServicesContext): Promise<boole
   getCourseMaterials(courseId, wordsSourcePattern, classroom, drive).then(async ({ words, wordsData }) => {
     let answerLength = 0;
     const shortAnswer: string[] = [];
-    const pdfDocContent: Content[] = [];
+    const pdfDocContent: TextEntries = [];
 
     const sendShortAnswer = () => ctx.reply(shortAnswer.join('\n\n'), { parse_mode: 'HTML' });
 
@@ -117,20 +117,20 @@ export const handleListWords = async (ctx: GoogleServicesContext): Promise<boole
       const singleWordData = wordsData[word];
       const noAutoTranslationFraze = 'Не удалось перевести автоматически';
 
-      pdfDocContent.push({ text: word, style: PdfClassNames.Word });
+      pdfDocContent.push({ text: word, className: PdfClassName.Word });
 
       if (!singleWordData?.length) {
-        pdfDocContent.push({ text: noAutoTranslationFraze, style: [PdfClassNames.Italics, PdfClassNames.Last] });
+        pdfDocContent.push({ text: noAutoTranslationFraze, className: [PdfClassName.Italics, PdfClassName.Last] });
       } else {
         pdfDocContent.push(...singleWordData.map(({ context, transLit, translation, comment }) => {
-          const lines: Content[] = [
-            { text: context, style: PdfClassNames.Context },
-            { text: transLit, style: PdfClassNames.Italics },
-            { text: translation, style: PdfClassNames.Last },
+          const lines: TextEntries = [
+            { text: context, className: PdfClassName.Context },
+            { text: transLit, className: PdfClassName.Italics },
+            { text: translation, className: PdfClassName.Last },
           ];
 
           if (comment) {
-            lines.splice(2, 0, { text: comment, style: PdfClassNames.Italics });
+            lines.splice(2, 0, { text: comment, className: PdfClassName.Italics });
           }
 
           return lines;
@@ -156,7 +156,7 @@ export const handleListWords = async (ctx: GoogleServicesContext): Promise<boole
       await sendShortAnswer();
     }
 
-    const pdf = await writePdf({ content: pdfDocContent });
+    const pdf = await writePdf(pdfDocContent);
     await ctx.replyWithDocument(new InputFile(pdf, `C#${courseId}-${wordsSourcePattern}.pdf`), {
       caption: 'В этом файле собрана полная информация об изученных словах.',
     });
