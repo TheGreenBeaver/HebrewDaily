@@ -14,16 +14,17 @@ export const start = () => {
   const publicUrl = getVar('PUBLIC_URL');
   const port = getPort();
 
-  const launchServer = () => {
-    app.listen(port, () => appResources.logger.info(`Started an Express server on port ${port}`));
-  };
-
   if (publicUrl) {
-    app.use(webhookCallback(bot));
-    launchServer();
+    app.use('/lebot', webhookCallback(bot));
+    app.listen(port, async () => {
+      await bot.api.setWebhook(`${publicUrl}/lebot`);
+      appResources.logger.info(`Started an Express server on port ${port}`);
+    });
   } else {
     void bot.start({
-      onStart: launchServer,
+      onStart: () => {
+        app.listen(port, () => appResources.logger.info(`Started an Express server on port ${port}`));
+      },
     });
   }
 };
