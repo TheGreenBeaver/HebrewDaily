@@ -41,7 +41,7 @@ export const extraMiddleware = new Composer<GoogleServicesContext>(
 
         await handleListWords(ctx);
       } else {
-        await next();
+        await ctx.reply('Курса, подходящего под заданные параметры, не нашлось');
       }
     } else {
       await next();

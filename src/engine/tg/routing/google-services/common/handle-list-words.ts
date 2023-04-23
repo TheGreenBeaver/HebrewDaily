@@ -1,5 +1,9 @@
+import type { classroom_v1 } from 'googleapis';
 import { InputFile } from 'grammy';
+import isArray from 'lodash/isArray';
+import isString from 'lodash/isString';
 import noop from 'lodash/noop';
+import { DateTime } from 'luxon';
 
 import { withComplicatedCache } from '../../../../../utils/cache';
 import { listAll } from '../../../../../utils/google-services';
@@ -59,20 +63,106 @@ const getFileMaterials = withComplicatedCache<Promise<Materials>, [string, Drive
   }
 }, (...args) => args[0], { timeout: 24 * 60 * 60 * 1000 });
 
-const getCourseMaterials = withComplicatedCache<Promise<Materials>, [string, string, Classroom, Drive]>(async (
+enum SpecialListLimit {
+  All = 'All',
+  Last = 'Last',
+}
+
+type ListLimit = SpecialListLimit | DateTime | [DateTime, DateTime];
+
+const listLimitToString = (listLimit: ListLimit): string => isString(listLimit)
+  ? listLimit
+  : [listLimit].flat().map(d => d.toISO() ?? 'TTT').join(' ');
+
+type GCMArgs = [string, string, ListLimit, Classroom, Drive];
+type CourseWorkList = classroom_v1.Schema$CourseWork[];
+
+const filterCourseWorkByLimit = (
+  courseWork: CourseWorkList,
+  listLimit: ListLimit,
+): CourseWorkList => {
+  switch (listLimit) {
+    case SpecialListLimit.All:
+      return courseWork;
+    case SpecialListLimit.Last:
+      return courseWork.slice(0, 1);
+    default: {
+      const filtered: CourseWorkList = [];
+
+      for (const workPiece of courseWork) {
+        const { updateTime, creationTime } = workPiece;
+        const t = updateTime ?? creationTime;
+
+        if (!t) {
+          continue;
+        }
+
+        const workPieceDate = DateTime.fromISO(t).startOf('day');
+
+        if (isArray(listLimit)) {
+          if (workPieceDate > listLimit[1].startOf('day')) {
+            break;
+          }
+
+          if (workPieceDate >= listLimit[0].startOf('day')) {
+            filtered.push(workPiece);
+          }
+
+          continue;
+        }
+
+        if (workPieceDate > listLimit.startOf('day')) {
+          break;
+        }
+
+        if (workPieceDate === listLimit.startOf('day')) {
+          filtered.push(workPiece);
+        }
+      }
+
+      return filtered;
+    }
+  }
+};
+
+const getCourseMaterials = withComplicatedCache<Promise<Materials>, GCMArgs>(async (
   courseId,
   wordsSourcePattern,
+  listLimit,
   classroom,
   drive,
 ) => {
+  const orderBy = listLimit === SpecialListLimit.Last ? 'updateTime desc' : 'updateTime asc';
+
   const courseWork = await listAll(
-    params => classroom.courses.courseWork.list({ ...params, courseId, orderBy: 'updateTime asc' }),
+    params => classroom.courses.courseWork.list({ ...params, courseId, orderBy }),
     'courseWork',
+    dataChunk => {
+      if (listLimit === SpecialListLimit.All) {
+        return false;
+      }
+
+      if (!dataChunk?.length) {
+        return listLimit !== SpecialListLimit.Last;
+      }
+
+      if (listLimit === SpecialListLimit.Last) {
+        return !!dataChunk.length;
+      }
+
+      const endDate = isArray(listLimit) ? listLimit[1] : listLimit;
+
+      return dataChunk.some(({ updateTime, creationTime }) => {
+        const t = updateTime ?? creationTime;
+
+        return !!t && DateTime.fromISO(t).startOf('day') > endDate.startOf('day');
+      });
+    },
   );
 
   const regExpPattern = new RegExp(`^${wordsSourcePattern.replaceAll('*', '.*')}$`);
 
-  const fileIds = courseWork.reduce<string[]>((result, { materials }) => [
+  const fileIds = filterCourseWorkByLimit(courseWork, listLimit).reduce<string[]>((result, { materials }) => [
     ...result,
     ...(materials || []).reduce<string[]>(
       (fittingMaterials, { driveFile }) => {
@@ -92,10 +182,72 @@ const getCourseMaterials = withComplicatedCache<Promise<Materials>, [string, str
     words: [...acc.words, ...materials.words],
     wordsData: { ...acc.wordsData, ...materials.wordsData },
   }), { words: [], wordsData: {} });
-}, (...args) => [args[0], args[1]], { rotationSchedule: '0 0,45 8,13,14,18 * * *', maxSize: 70 });
+}, (courseId, wordsSourcePattern, listLimit) => [
+  courseId,
+  wordsSourcePattern,
+  listLimitToString(listLimit),
+], { rotationSchedule: '0 0,45 8,13,14,18 * * *', maxSize: 70 });
+
+const formats = [
+  'dd/MM/yy',
+  'dd.MM.yy',
+  'dd/MM/yyyy',
+  'dd.MM.yyyy',
+  'dd/MM',
+  'dd.MM',
+  'd/M/yy',
+  'd.M.yy',
+];
+
+const stringToDateTime = (dateString: string): DateTime | null => {
+  const iso = DateTime.fromISO(dateString);
+
+  if (iso.isValid) {
+    return iso.toUTC();
+  }
+
+  for (const format of formats) {
+    const custom = DateTime.fromFormat(dateString, format);
+
+    if (custom.isValid) {
+      return custom.toUTC();
+    }
+  }
+
+  return null;
+};
+
+const getListLimit = (rawMatch?: string | RegExpMatchArray): ListLimit => {
+  if (!isString(rawMatch) || !rawMatch) {
+    return SpecialListLimit.Last;
+  }
+
+  const match = rawMatch.trim().toLowerCase();
+
+  if (['all', 'dct', 'vse', 'все', 'фдд', 'הכל'].includes(match)) {
+    return SpecialListLimit.All;
+  }
+
+  if (match.includes(' - ')) {
+    const [fromString, toString] = match.split(' - ');
+
+    if (!fromString || !toString) {
+      return SpecialListLimit.Last;
+    }
+
+    const from = stringToDateTime(fromString);
+    const to = stringToDateTime(toString);
+
+    return from && to ? [from, to] : SpecialListLimit.Last;
+  }
+
+  const at = stringToDateTime(match);
+
+  return at ?? SpecialListLimit.Last;
+};
 
 export const handleListWords = async (ctx: GoogleServicesContext): Promise<boolean> => {
-  const { session: { courseId, wordsSourcePattern }, resources: { classroom, drive }, dropControl } = ctx;
+  const { session: { courseId, wordsSourcePattern }, resources: { classroom, drive }, dropControl, match } = ctx;
 
   dropControl();
 
@@ -105,8 +257,9 @@ export const handleListWords = async (ctx: GoogleServicesContext): Promise<boole
   }
 
   await ctx.reply('Ваш запрос обрабатывается, это может занять некоторое время');
+  const listLimit = getListLimit(match);
 
-  getCourseMaterials(courseId, wordsSourcePattern, classroom, drive).then(async ({ words, wordsData }) => {
+  getCourseMaterials(courseId, wordsSourcePattern, listLimit, classroom, drive).then(async ({ words, wordsData }) => {
     let answerLength = 0;
     const shortAnswer: string[] = [];
     const pdfDocContent: TextEntries = [];
@@ -157,7 +310,7 @@ export const handleListWords = async (ctx: GoogleServicesContext): Promise<boole
     }
 
     const pdf = await writePdf(pdfDocContent);
-    await ctx.replyWithDocument(new InputFile(pdf, `C#${courseId}-${wordsSourcePattern}.pdf`), {
+    await ctx.replyWithDocument(new InputFile(pdf, `C#${courseId}-${wordsSourcePattern}-${listLimit}.pdf`), {
       caption: 'В этом файле собрана полная информация об изученных словах.',
     });
   }).catch(noop);

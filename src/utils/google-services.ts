@@ -7,6 +7,7 @@ export const listAll = async <D, Key extends string>(
     params?: Params,
   ) => Promise<{ data: { [K in Key]?: D[] } & { nextPageToken?: string | null } }>,
   key: Key,
+  getShouldStop?: (dataChunk?: D[]) => boolean,
 ): Promise<D[]> => {
   const allData: D[] = [];
   let pageToken: Maybe<string> = undefined;
@@ -21,9 +22,10 @@ export const listAll = async <D, Key extends string>(
     const { data } = await performRequest(params);
 
     pageToken = data.nextPageToken;
-    allData.push(...(data[key] ?? []));
+    const dataChunk = data[key];
+    allData.push(...(dataChunk ?? []));
 
-    if (!data.nextPageToken) {
+    if (!data.nextPageToken || getShouldStop?.(dataChunk)) {
       break;
     }
   }
