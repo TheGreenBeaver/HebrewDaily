@@ -79,10 +79,16 @@ export abstract class Queue<Args extends unknown[], Result, Worker extends objec
 
     if (next) {
       if (!workerRecord) {
-        const worker = await this.spawnWorker();
-        workerRecord = { worker, isBusy: false };
-        workerRecordIdx = this.queue.length;
-        this.workerPool.push(workerRecord);
+        try {
+          const worker = await this.spawnWorker();
+          workerRecord = { worker, isBusy: false };
+          workerRecordIdx = this.queue.length;
+          this.workerPool.push(workerRecord);
+        } catch {
+          this.putBack(next);
+
+          return;
+        }
       }
 
       const { worker, expiryId } = workerRecord;

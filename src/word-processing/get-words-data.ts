@@ -11,6 +11,7 @@ type Worker = { page: Page };
 class TranslatorQueue extends Queue<string[], Promise<WordsData>, Worker, number>{
   private browser: Browser | undefined;
   private launchBrowser: Promise<Browser> | undefined;
+  private static MAX_RETRIES = 5;
 
   private static mergeArrays<T>(odd: T[], even: T[]): T[] {
     const result: T[] = [];
@@ -54,6 +55,7 @@ class TranslatorQueue extends Queue<string[], Promise<WordsData>, Worker, number
     }
 
     const page = await this.browser.newPage();
+    let retriesLeft = TranslatorQueue.MAX_RETRIES;
 
     while (true) {
       try {
@@ -61,6 +63,11 @@ class TranslatorQueue extends Queue<string[], Promise<WordsData>, Worker, number
 
         return { page };
       } catch (e) {
+        if (--retriesLeft === 0) {
+          await page.close();
+          throw e;
+        }
+
         await new Promise(resolve => setTimeout(resolve, 500));
       }
     }

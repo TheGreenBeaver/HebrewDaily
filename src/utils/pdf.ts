@@ -3,6 +3,7 @@ import merge from 'lodash/merge';
 import path from 'path';
 import PdfPrinter from 'pdfmake';
 import type { TDocumentDefinitions, TFontDictionary } from 'pdfmake/interfaces';
+import { Transform } from 'stream';
 
 import { ROOT } from './rom-access';
 
@@ -40,7 +41,7 @@ const defaultDef: Pick<TDocumentDefinitions, 'defaultStyle' | 'styles'> = {
 export function writePdf(docDefinition: TDocumentDefinitions, dest: string): Promise<void>;
 export function writePdf(docDefinition: TDocumentDefinitions): Promise<Buffer>;
 
-export async function writePdf(docDefinition: TDocumentDefinitions, dest?: string) {
+export function writePdf(docDefinition: TDocumentDefinitions, dest?: string) {
   const fontsRoot = path.join(ROOT, 'fonts');
 
   const getFontSrc = (name: string): string => path.join(fontsRoot, `${name}.ttf`);
@@ -59,16 +60,28 @@ export async function writePdf(docDefinition: TDocumentDefinitions, dest?: strin
 
   const printer = new PdfPrinter(fonts);
 
-  const pdfDoc = printer.createPdfKitDocument(merge(defaultDef, docDefinition));
+  const pdfDoc = printer.createPdfKitDocument(merge({}, defaultDef, docDefinition));
 
   if (!dest) {
-    const buf: Buffer[] = [];
+    return new Promise<Buffer>(resolve => {
+      const transformer = new Transform();
+      const chunks: Buffer[] = [];
 
-    for await (const chunk of pdfDoc) {
-      buf.push(Buffer.from(chunk));
-    }
+      transformer._transform = (chunk, encoding, callback) => {
+        callback(null, chunk);
+      };
 
-    return Buffer.concat(buf);
+      transformer.on('data', chunk => {
+        chunks.push(chunk);
+      });
+
+      pdfDoc.on('end', () => {
+        resolve(Buffer.concat(chunks));
+      });
+
+      pdfDoc.pipe(transformer);
+      pdfDoc.end();
+    });
   }
 
   return new Promise(resolve => {

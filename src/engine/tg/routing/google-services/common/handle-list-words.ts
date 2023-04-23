@@ -108,9 +108,10 @@ export const handleListWords = async (ctx: GoogleServicesContext): Promise<boole
 
   getCourseMaterials(courseId, wordsSourcePattern, classroom, drive).then(async ({ words, wordsData }) => {
     let answerLength = 0;
-    let wordsLeft = words.length;
     const shortAnswer: string[] = [];
     const pdfDocContent: Content[] = [];
+
+    const sendShortAnswer = () => ctx.reply(shortAnswer.join('\n\n'), { parse_mode: 'HTML' });
 
     for (const word of words) {
       const singleWordData = wordsData[word];
@@ -140,28 +141,25 @@ export const handleListWords = async (ctx: GoogleServicesContext): Promise<boole
 
       const line = `<b>${word}</b>\n${translation}`;
       answerLength += line.length;
-      wordsLeft--;
 
       if (answerLength > TEXT_MAX_LENGTH) {
-        if (answerLength - line.length + 17 + `${wordsLeft}`.length > TEXT_MAX_LENGTH) {
-          shortAnswer.pop();
-          wordsLeft++;
-        }
+        await sendShortAnswer();
 
-        shortAnswer.push(`...и ещё ${wordsLeft} слов.`);
-
-        break;
+        shortAnswer.splice(0, shortAnswer.length, line);
+        answerLength = line.length;
       } else {
         shortAnswer.push(line);
       }
     }
 
-    const p = 'testdoc.pdf';
-    /*const pdf = */await writePdf({ content: pdfDocContent }, p);
-    await ctx.replyWithDocument(new InputFile(p, `C#${courseId}-${wordsSourcePattern}.pdf`), {
+    if (shortAnswer.length) {
+      await sendShortAnswer();
+    }
+
+    const pdf = await writePdf({ content: pdfDocContent });
+    await ctx.replyWithDocument(new InputFile(pdf, `C#${courseId}-${wordsSourcePattern}.pdf`), {
       caption: 'В этом файле собрана полная информация об изученных словах.',
     });
-    await ctx.reply(shortAnswer.join('\n\n'), { parse_mode: 'HTML' });
   }).catch(noop);
 
   return true;
