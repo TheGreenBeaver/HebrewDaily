@@ -15,9 +15,9 @@ export const start = () => {
   const port = getPort();
 
   if (publicUrl) {
-    app.use('/lebot', webhookCallback(bot));
+    app.use('/tg-bot', webhookCallback(bot));
     app.listen(port, async () => {
-      await bot.api.setWebhook(`${publicUrl}/lebot`);
+      await bot.api.setWebhook(`${publicUrl}/tg-bot`);
       appResources.logger.info(`Started an Express server on port ${port}`);
     });
   } else {
