@@ -1,4 +1,4 @@
 export enum Commands {
-  listWords = 'listWords',
-  googleAuth = 'googleAuth',
+  listWords = 'list_words',
+  googleAuth = 'google_auth',
 }
