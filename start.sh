@@ -1,3 +1,3 @@
 #!bin/bash
 
-cd "$BOT_ROOT" && yarn start
+cd "$1" && yarn start
