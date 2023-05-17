@@ -20,7 +20,7 @@ export const start = () => {
   if (publicUrl) {
     app.use(botPath, webhookCallback(bot));
     app.listen(port, async () => {
-      await bot.api.setWebhook(botPath);
+      await bot.api.setWebhook(`${publicUrl}${botPath}`);
       logStart();
     });
   } else {

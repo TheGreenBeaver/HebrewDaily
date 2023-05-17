@@ -4,11 +4,11 @@ import { getVar } from '../../utils/env';
 import { getOrigin } from '../../utils/routing';
 import type { GoogleTools } from '../types';
 
-export const getGoogleTools = (chatId: number): GoogleTools => {
+export const getGoogleTools = (): GoogleTools => {
   const authClient = new google.auth.OAuth2(
     getVar('GOOGLE_CLIENT_ID'),
     getVar('GOOGLE_CLIENT_SECRET'),
-    `${getOrigin()}${getVar('GOOGLE_REDIRECT_PATH')}/${chatId}`,
+    `${getOrigin()}${getVar('GOOGLE_REDIRECT_PATH')}`,
   );
 
   const classroom = google.classroom({

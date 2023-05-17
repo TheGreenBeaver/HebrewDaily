@@ -16,8 +16,7 @@ export const extraMiddleware = new Composer<GoogleServicesContext>(
       return ctx.reply('Где я?..');
     }
 
-    const googleTools = getGoogleTools(chat.id);
-
+    const googleTools = getGoogleTools();
     const tokens = credentialsStorage.get(chat.id);
 
     if (tokens) {

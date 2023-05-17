@@ -15,6 +15,7 @@ export const handleGoogleAuth = (ctx: GoogleServicesContext, emergency?: boolean
       'https://www.googleapis.com/auth/drive.readonly',
       'https://www.googleapis.com/auth/classroom.topics.readonly',
     ],
+    state: `${ctx.chat?.id}`,
   });
 
   const introduction = emergency
