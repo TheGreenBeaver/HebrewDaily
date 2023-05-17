@@ -47,28 +47,29 @@ export const createBot = (resources: AppResources): Bot<CombinedContext> => {
     sessionMiddleware({ initial }),
 
     async (ctx, next) => {
-      const { session } = ctx;
-      const { commandName } = session;
-
+      Object.assign(ctx, resources);
       // === === ===
-      ctx.resources = resources;
-
-      ctx.getControl = () => {
+      ctx.getControl = function () {
+        const { commandName } = this.session;
         const moduleName = Object
           .entries(modules)
-          .find(([, config]) => 'Commands' in config && commandName && commandName in config.Commands)?.[0];
+          .find(([, config]) =>
+            'Commands' in config &&
+            commandName &&
+            Object.values(config.Commands).includes(commandName),
+          )?.[0];
 
         logger.info(`${moduleName} got control while handling ${commandName} command`);
-        session.moduleInControl = moduleName;
+        this.session.moduleInControl = moduleName;
       };
 
-      ctx.dropControl = () => {
+      ctx.dropControl = function () {
         logger.info('No module is in control');
-        session.moduleInControl = undefined;
+        this.session.moduleInControl = undefined;
       };
 
       // === === ===
-      session.commandName = ctx.entities().find(entity => entity.type === 'bot_command')?.text.substring(1);
+      ctx.session.commandName = ctx.entities().find(entity => entity.type === 'bot_command')?.text.substring(1);
 
       await next();
     },
@@ -105,7 +106,7 @@ export const createBot = (resources: AppResources): Bot<CombinedContext> => {
     for (const [moduleName, moduleConfig] of Object.entries(modules)) {
       if (
         moduleInControl === moduleName ||
-        commandName && 'Commands' in moduleConfig && commandName in moduleConfig.Commands
+        commandName && 'Commands' in moduleConfig && Object.values(moduleConfig.Commands).includes(commandName)
       ) {
         return moduleName as keyof typeof modules;
       }
@@ -116,6 +117,10 @@ export const createBot = (resources: AppResources): Bot<CombinedContext> => {
 
   // === === === === ===
   Object.values(modules).forEach(module => bot.use(module.composer));
+
+  bot.use(ctx => ctx.reply(
+    'Такое я обрабатывать не умею... Вы можете воспользоваться /help, чтобы узнать список доступных команд.',
+  ));
 
   // === === === === ====
   bot.catch(error => {

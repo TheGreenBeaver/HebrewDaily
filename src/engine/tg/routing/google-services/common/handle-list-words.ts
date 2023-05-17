@@ -75,29 +75,28 @@ const listLimitToString = (listLimit: ListLimit): string => isString(listLimit)
   : [listLimit].flat().map(d => d.toISO() ?? 'TTT').join(' ');
 
 type GCMArgs = [string, string, ListLimit, Classroom, Drive];
-type CourseWorkList = classroom_v1.Schema$CourseWork[];
+type TopicsList = classroom_v1.Schema$Topic[];
 
-const filterCourseWorkByLimit = (
-  courseWork: CourseWorkList,
+const filterTopicsByLimit = (
+  topics: TopicsList,
   listLimit: ListLimit,
-): CourseWorkList => {
+): TopicsList => {
   switch (listLimit) {
     case SpecialListLimit.All:
-      return courseWork;
+      return topics;
     case SpecialListLimit.Last:
-      return courseWork.slice(0, 1);
+      return topics.slice(-1);
     default: {
-      const filtered: CourseWorkList = [];
+      const filtered: TopicsList = [];
 
-      for (const workPiece of courseWork) {
-        const { updateTime, creationTime } = workPiece;
-        const t = updateTime ?? creationTime;
+      for (const workPiece of topics) {
+        const { updateTime } = workPiece;
 
-        if (!t) {
+        if (!updateTime) {
           continue;
         }
 
-        const workPieceDate = DateTime.fromISO(t).startOf('day');
+        const workPieceDate = DateTime.fromISO(updateTime).startOf('day');
 
         if (isArray(listLimit)) {
           if (workPieceDate > listLimit[1].startOf('day')) {
@@ -134,47 +133,40 @@ const getCourseMaterials = withComplicatedCache<Promise<Materials>, GCMArgs>(asy
 ) => {
   const orderBy = listLimit === SpecialListLimit.Last ? 'updateTime desc' : 'updateTime asc';
 
+  const topics = await listAll(
+    params => classroom.courses.topics.list({ ...params, courseId }),
+    'topic',
+  );
+  const fittingTopicIds = filterTopicsByLimit(topics, listLimit).reduce<string[]>(
+    (result, topic) => topic.topicId ? [...result, topic.topicId] : result, [],
+  );
+
   const courseWork = await listAll(
     params => classroom.courses.courseWork.list({ ...params, courseId, orderBy }),
     'courseWork',
-    dataChunk => {
-      if (listLimit === SpecialListLimit.All) {
-        return false;
-      }
-
-      if (!dataChunk?.length) {
-        return listLimit !== SpecialListLimit.Last;
-      }
-
-      if (listLimit === SpecialListLimit.Last) {
-        return !!dataChunk.length;
-      }
-
-      const endDate = isArray(listLimit) ? listLimit[1] : listLimit;
-
-      return dataChunk.some(({ updateTime, creationTime }) => {
-        const t = updateTime ?? creationTime;
-
-        return !!t && DateTime.fromISO(t).startOf('day') > endDate.startOf('day');
-      });
-    },
   );
 
   const regExpPattern = new RegExp(`^${wordsSourcePattern.replaceAll('*', '.*')}$`);
 
-  const fileIds = filterCourseWorkByLimit(courseWork, listLimit).reduce<string[]>((result, { materials }) => [
-    ...result,
-    ...(materials || []).reduce<string[]>(
-      (fittingMaterials, { driveFile }) => {
-        const title = driveFile?.driveFile?.title;
+  const fileIds = courseWork.reduce<string[]>((result, { materials, topicId }) => {
+    if (!topicId || !fittingTopicIds.includes(topicId)) {
+      return result;
+    }
 
-        return !title || !regExpPattern.test(title) || !driveFile.driveFile?.id
-          ? fittingMaterials
-          : [...fittingMaterials, driveFile.driveFile.id];
-      },
-      [],
-    ),
-  ], []);
+    return [
+      ...result,
+      ...(materials || []).reduce<string[]>(
+        (fittingMaterials, { driveFile }) => {
+          const title = driveFile?.driveFile?.title;
+
+          return !title || !regExpPattern.test(title) || !driveFile.driveFile?.id
+            ? fittingMaterials
+            : [...fittingMaterials, driveFile.driveFile.id];
+        },
+        [],
+      ),
+    ];
+  }, []);
 
   const allMaterials = await Promise.all(fileIds.map(fileId => getFileMaterials(fileId, drive)));
 
@@ -247,9 +239,9 @@ const getListLimit = (rawMatch?: string | RegExpMatchArray): ListLimit => {
 };
 
 export const handleListWords = async (ctx: GoogleServicesContext): Promise<boolean> => {
-  const { session: { courseId, wordsSourcePattern }, resources: { classroom, drive }, dropControl, match } = ctx;
+  const { session: { courseId, wordsSourcePattern }, classroom, drive, match } = ctx;
 
-  dropControl();
+  ctx.dropControl();
 
   // TODO: Separate status if !wordsSourcePattern
   if (!courseId || !wordsSourcePattern) {

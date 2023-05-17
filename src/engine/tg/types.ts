@@ -9,8 +9,8 @@ export type ControlData = {
 
 export type EnhancedContext =
   & Context
+  & AppResources
   & {
-    resources: AppResources,
     getControl: () => void,
     dropControl: () => void,
   }

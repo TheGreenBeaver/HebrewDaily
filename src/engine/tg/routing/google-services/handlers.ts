@@ -10,7 +10,7 @@ export const composer = new Composer<GoogleServicesContext>();
 composer.command(Commands.googleAuth, ctx => handleGoogleAuth(ctx));
 
 composer.command(Commands.listWords, async ctx => {
-  const { resources: { classroom }, session, getControl } = ctx;
+  const { classroom, session } = ctx;
 
   const handled = await handleListWords(ctx);
 
@@ -27,7 +27,8 @@ composer.command(Commands.listWords, async ctx => {
   session.availableCourses = allCourses;
   const coursesList = allCourses.map((course, idx) => `  ${idx + 1}. ${course.name}`).join('\n');
 
-  getControl();
+  ctx.getControl();
+
   return ctx.reply(
     `Пожалуйста, выберите нужный курс (введите название или номер). Доступные курсы:\n${coursesList}`,
   );

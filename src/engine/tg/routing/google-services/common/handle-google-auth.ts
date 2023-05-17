@@ -1,7 +1,7 @@
 import type { GoogleServicesContext } from '../types';
 
 export const handleGoogleAuth = (ctx: GoogleServicesContext, emergency?: boolean) => {
-  const { resources: { authClient }, session } = ctx;
+  const { session, authClient } = ctx;
 
   session.courseId = undefined;
   session.availableCourses = undefined;
@@ -13,6 +13,7 @@ export const handleGoogleAuth = (ctx: GoogleServicesContext, emergency?: boolean
       'https://www.googleapis.com/auth/classroom.courses.readonly',
       'https://www.googleapis.com/auth/classroom.coursework.me.readonly',
       'https://www.googleapis.com/auth/drive.readonly',
+      'https://www.googleapis.com/auth/classroom.topics.readonly',
     ],
   });
 

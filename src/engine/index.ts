@@ -13,17 +13,20 @@ export const start = () => {
 
   const publicUrl = getVar('PUBLIC_URL');
   const port = getPort();
+  const botPath = getVar('BOT_PATH', '/tg-bot');
+
+  const logStart = () => appResources.logger.info(`Started an Express server on port ${port}`);
 
   if (publicUrl) {
-    app.use('/tg-bot', webhookCallback(bot));
+    app.use(botPath, webhookCallback(bot));
     app.listen(port, async () => {
-      await bot.api.setWebhook(`${publicUrl}/tg-bot`);
-      appResources.logger.info(`Started an Express server on port ${port}`);
+      await bot.api.setWebhook(botPath);
+      logStart();
     });
   } else {
     void bot.start({
       onStart: () => {
-        app.listen(port, () => appResources.logger.info(`Started an Express server on port ${port}`));
+        app.listen(port, logStart);
       },
     });
   }

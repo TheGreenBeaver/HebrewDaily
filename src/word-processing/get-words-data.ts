@@ -1,3 +1,4 @@
+import os from 'os';
 import puppeteer from 'puppeteer';
 
 import { withComplicatedCache } from '../utils/cache';
@@ -162,4 +163,4 @@ class TranslatorQueue extends Queue<string[], Promise<WordsData>, Worker, number
   }, { maxSize: 500, thisArg: this });
 }
 
-export const translator = new TranslatorQueue(10);
+export const translator = new TranslatorQueue(Math.floor(os.totalmem() / Math.pow(2, 29)));

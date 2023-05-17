@@ -4,9 +4,11 @@ import now from 'lodash/now';
 import type { MaybePromise } from './types';
 
 type Cb<Result> = (result: Awaited<Result>) => void;
+type ErrCb = (e: unknown) => void;
 type QueueEntry<Args extends unknown[], Result> = {
   args: Args,
   cb: Cb<Result>,
+  errCb?: ErrCb,
   timestamp: number,
 };
 type WorkerRecord<Worker extends object> = {
@@ -84,7 +86,8 @@ export abstract class Queue<Args extends unknown[], Result, Worker extends objec
           workerRecord = { worker, isBusy: false };
           workerRecordIdx = this.queue.length;
           this.workerPool.push(workerRecord);
-        } catch {
+        } catch (e) {
+          next.errCb?.(e);
           this.putBack(next);
 
           return;
@@ -110,11 +113,12 @@ export abstract class Queue<Args extends unknown[], Result, Worker extends objec
         }
 
         void this.tick();
-      }).catch(() => {
+      }).catch(e => {
         if (workerRecord) {
           workerRecord.isBusy = false;
         }
 
+        next.errCb?.(e);
         this.putBack(next);
         void this.tick();
       });
@@ -126,18 +130,18 @@ export abstract class Queue<Args extends unknown[], Result, Worker extends objec
   }
 
   public push(args: Args): Promise<Result>;
-  public push(args: Args, cb: Cb<Result>): void;
+  public push(args: Args, cb: Cb<Result>, errCb?: ErrCb): void;
 
-  public push(args: Args, cb?: Cb<Result>) {
+  public push(args: Args, cb?: Cb<Result>, errCb?: ErrCb) {
     if (cb) {
-      this.queue.push({ args, cb, timestamp: now() });
+      this.queue.push({ args, cb, errCb, timestamp: now() });
       void this.tick();
 
       return;
     }
 
-    return new Promise(resolve => {
-      this.queue.push({ args, cb: resolve, timestamp: now() });
+    return new Promise((resolve, reject) => {
+      this.queue.push({ args, cb: resolve, errCb: reject, timestamp: now() });
       void this.tick();
     });
   }

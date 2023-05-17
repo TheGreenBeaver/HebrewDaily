@@ -1,0 +1,1 @@
+export { handleTranslateWord } from './handle-translate-word';
